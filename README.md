@@ -86,4 +86,19 @@ The CNN is better on the three walking classes and worse on sitting. **The harde
 
 The served model is the seed-0 CNN (test macro-F1 0.9229), fixed in `scripts/evaluate.py` before the run, not the best seed.
 
+## Serving
+
+```bash
+python scripts/export_onnx.py                                   # artifacts/model.onnx + parity check
+uvicorn movement.serve:create_app --factory --port 8000
+curl -s localhost:8000/health
+curl -s -X POST localhost:8000/predict -H 'content-type: application/json' \
+  -d '{"windows": [[[0.9, -0.1, 0.5, 0.0, 0.0, 0.0], ... 128 rows ...]]}'
+```
+
+- **Export:** `torch.onnx.export` (dynamo exporter, dynamic batch dimension). The model's normalization is inside the graph, so clients send raw sensor values (acc in g, gyro in rad/s).
+- **Parity:** on all 2,996 test windows, ONNX Runtime vs PyTorch on CPU: max |logit difference| **2.384e-06**, max |probability difference| 4.768e-07, same predicted class for 100% of windows (vs PyTorch on MPS: 2.861e-06). Tests also check batch sizes 1, 7, 32 and 300 against a 1e-4 tolerance.
+- **Model:** 32,550 parameters, `model.onnx` 151,572 bytes (0.152 MB).
+- **API:** `POST /predict` takes 1–256 windows of shape 128 × 6 and returns a label and class probabilities for each, plus a model version (first 12 hex characters of the ONNX file's SHA-256). Wrong shapes, NaN or infinite values, and non-JSON bodies get a 422 with a message; more than 256 windows get a 413. The body is parsed with `json` + NumPy instead of a nested pydantic model because a batch of 32 is 24,576 numbers. ONNX Runtime runs with 1 thread per call in FastAPI's thread pool, so concurrent requests can use several cores.
+
 Work in progress; results will be added as each milestone lands.
