@@ -90,14 +90,14 @@ def test_rotations_are_proper_and_within_angle():
 def test_rotation_keeps_vector_lengths_and_applies_same_rotation_to_both_sensors():
     x = torch.randn(16, WINDOW, 6)
     x[:, :, 3:] = x[:, :, :3]  # gyro == acc, so a shared rotation keeps them equal
-    out = augment(x, TrainConfig(rotate_deg=30), torch.Generator().manual_seed(0))
+    out = augment(x, TrainConfig(rotate_deg=30, gain_jitter=0), torch.Generator().manual_seed(0))
     assert torch.allclose(out[:, :, :3].norm(dim=2), x[:, :, :3].norm(dim=2), atol=1e-5)
     assert torch.allclose(out[:, :, :3], out[:, :, 3:], atol=1e-6)
     assert not torch.allclose(out, x)
 
 
-def test_gain_jitter_bounds_and_off_by_default():
+def test_gain_jitter_bounds_and_zero_means_off():
     x = torch.ones(64, WINDOW, 6)
-    out = augment(x, TrainConfig(gain_jitter=0.1), torch.Generator().manual_seed(0))
+    out = augment(x, TrainConfig(rotate_deg=0, gain_jitter=0.1), torch.Generator().manual_seed(0))
     assert out.min() >= 0.9 and out.max() <= 1.1 and out.std() > 0
-    assert torch.equal(augment(x, TrainConfig(), torch.Generator()), x)
+    assert torch.equal(augment(x, TrainConfig(rotate_deg=0, gain_jitter=0), torch.Generator()), x)

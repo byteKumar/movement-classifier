@@ -46,6 +46,18 @@ Test subjects, 5 seeds, CPU: macro-F1 **0.9479 ± 0.0000**, accuracy **0.9479 ±
 
 `python scripts/train_cnn.py --seeds 0` trains a 3-block 1D-CNN (32,550 parameters) directly on the raw windows. The training set's per-channel mean and std are stored inside the model, so it takes raw sensor values. Adam, batch 64, up to 60 epochs, early stopping on validation macro-F1 with patience 10, best-epoch weights kept. Every epoch's train loss and validation F1 go to MLflow.
 
-First run (seed 0, MPS, 10 s): best epoch 5 of 15, validation macro-F1 0.9640, **test macro-F1 0.9197**, accuracy 0.9176. That is below the baseline on test, even though it is above it on validation. Most test errors come from one subject (subject 10: 64.1% accuracy, 46 of 160 static windows predicted as a walking class), whose phone orientation while lying down differs from most training subjects. Validation F1 also moves between 0.91 and 0.96 from one epoch to the next, so early stopping on only 4 subjects is noisy. Results over 5 seeds and cross-validation follow in the evaluation milestone.
+First run (seed 0, MPS, 10 s): best epoch 5 of 15, validation macro-F1 0.9640, **test macro-F1 0.9197**, accuracy 0.9176. That is below the baseline on test, even though it is above it on validation. Most test errors come from one subject (subject 10: 64.1% accuracy, 46 of 160 static windows predicted as a walking class), whose phone orientation while lying down differs from most training subjects. Validation F1 also moves between 0.91 and 0.96 from one epoch to the next, so early stopping on only 4 subjects is noisy.
+
+### Choosing augmentation without touching the test set
+
+Changing the model because of a test result would be tuning on the test set, so the fix was judged by cross-validation over the 21 **non-test** subjects (`scripts/select_cnn.py`). The decision rule was written into the script and committed (`9fe5e74`) before it was first run. Five folds of 4–5 held-out subjects each; in each fold 4 other subjects are used for early stopping. Three seeds per config, MPS.
+
+| config | held-out macro-F1 (15 runs) | per-fold means |
+|---|---|---|
+| HGB baseline (reference) | 0.9200 ± 0.0350 | 0.924, 0.944, 0.962, 0.888, 0.881 |
+| CNN v1, no augmentation | 0.9155 ± 0.0368 | 0.937, 0.920, 0.964, 0.876, 0.881 |
+| **CNN v2**, random rotation ≤ 30° + ±10% gain | **0.9308 ± 0.0387** | 0.937, 0.965, 0.971, 0.883, 0.899 |
+
+v2 beat v1 on 4 of 5 folds (+0.0154 mean), which meets the rule, so v2 is now the default. Caveat: the idea for v2 came from looking at test errors (subject 10), so its later test score is slightly test-informed. The v1 test result above stays in the record. Results over 5 seeds and cross-validation on the test protocol follow in the evaluation milestone.
 
 Work in progress; results will be added as each milestone lands.

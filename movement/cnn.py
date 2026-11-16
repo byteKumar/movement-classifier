@@ -63,9 +63,11 @@ class TrainConfig:
     batch_size: int = 64
     max_epochs: int = 60
     patience: int = 10  # epochs without val macro-F1 improvement before stopping
-    # Training-time augmentation (0 = off). Applied to each training batch only.
-    rotate_deg: float = 0.0  # max angle of a random 3D rotation of the phone
-    gain_jitter: float = 0.0  # each channel scaled by U(1 - g, 1 + g)
+    # Training-time augmentation (0 = off), applied to each training batch only.
+    # Defaults are "v2", chosen over no augmentation ("v1") by scripts/select_cnn.py
+    # (cross-validation on the 21 non-test subjects; see RESULTS.md).
+    rotate_deg: float = 30.0  # max angle of a random 3D rotation of the phone
+    gain_jitter: float = 0.1  # each channel scaled by U(1 - g, 1 + g)
 
     def as_params(self) -> dict:
         return asdict(self)

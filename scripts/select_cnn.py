@@ -38,7 +38,7 @@ from movement.metrics import mean_std, score
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIGS = {
-    "v1": TrainConfig(),
+    "v1": TrainConfig(rotate_deg=0.0, gain_jitter=0.0),
     "v2": TrainConfig(rotate_deg=30.0, gain_jitter=0.1),
 }
 SEEDS = [0, 1, 2]
