@@ -1,5 +1,7 @@
 # movement-classifier
 
+[![ci](https://github.com/byteKumar/movement-classifier/actions/workflows/ci.yml/badge.svg)](https://github.com/byteKumar/movement-classifier/actions/workflows/ci.yml)
+
 Classifies human movement (walking, walking upstairs, walking downstairs, sitting, standing, lying) from smartphone accelerometer and gyroscope data at 50 Hz. It covers the whole path from raw sensor streams to a served, monitored model:
 
 - windowing of raw recordings and a train/validation/test split by subject, so no person appears in both training and test
@@ -181,4 +183,12 @@ python scripts/drift_calibrated.py --stage test
 bash bench/run_bench.sh
 ```
 
-CI is not set up to run yet; the tests were run locally (`pytest`).
+## CI
+
+GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every push, on ubuntu-latest with Python 3.12 and CPU-only PyTorch:
+
+- pyflakes over the code
+- the real HAPT download, checksum-verified and cached, so the data and leakage tests run on the actual recordings
+- `pytest -m "not mps and not trained_model"`
+
+Two tests are deselected by marker, not skipped. `mps` compares the CNN's forward pass on MPS and CPU, and needs an Apple GPU. `trained_model` runs real test windows through the API with the served model, and needs the trained artifacts, which are not in git. Both pass locally on the M3. The job fails if any selected test is skipped. First green run: [43928417441](https://github.com/byteKumar/movement-classifier/actions/runs/43928417441), with 67 passed, 0 skipped and 2 deselected.

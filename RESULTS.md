@@ -70,6 +70,6 @@ The ladder stopped at 1,000 req/s, as the plan says it stops at the first failin
 
 ## Not verified
 
-- CI has not run: GitHub Actions is refused for this account. The test suite was run locally only.
+- CI (GitHub Actions, ubuntu-latest, CPU-only PyTorch) passes on the real HAPT data: 67 passed, 0 skipped ([run 43928417441](https://github.com/byteKumar/movement-classifier/actions/runs/43928417441)). Two tests run only locally: the MPS-vs-CPU check needs an Apple GPU, and the real-model API test needs trained artifacts that are not in git. All 69 pass on the M3.
 - The serving numbers come from one run per setting on a shared laptop, with k6 on the same machine.
 - The drift evaluation covers 6 synthetic shifts. Real sensor faults were not tested.
