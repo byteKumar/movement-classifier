@@ -85,3 +85,20 @@ def test_real_model_through_the_api_matches_pytorch_on_test_windows():
     got = [p["class_id"] for i in range(0, len(X), 32)
            for p in c.post("/predict", json={"windows": X[i:i + 32].tolist()}).json()["predictions"]]
     assert got == torch_logits(model, X).argmax(axis=1).tolist()
+
+
+def test_metrics_and_drift_endpoints(onnx_model, tmp_path):
+    from movement.drift import window_summary
+
+    _, path = onnx_model
+    ref = np.random.default_rng(5).normal(0, 1, size=(1000, 128, 6)).astype(np.float32)
+    np.savez(tmp_path / "ref.npz", summary=window_summary(ref))
+    c = TestClient(create_app(path, drift_reference=tmp_path / "ref.npz"))
+    assert c.get("/drift").json()["drift"] is None
+    for i in range(9):
+        assert c.post("/predict", json={"windows": _windows(32, seed=i).tolist()}).status_code == 200
+    m = c.get("/metrics").json()
+    assert m["requests"] == 9 and m["windows"] == 288
+    assert sum(m["predicted_class_counts"].values()) == 288
+    d = c.get("/drift").json()
+    assert d["n_windows"] == 256 and isinstance(d["drift"], bool)

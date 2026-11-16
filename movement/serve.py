@@ -1,16 +1,21 @@
 """FastAPI service: POST /predict with a batch of raw windows, scored by ONNX Runtime.
 
 Run:  uvicorn movement.serve:create_app --factory --port 8000
-Env:  MODEL_PATH (default artifacts/model.onnx), ORT_THREADS (default 1)
+Env:  MODEL_PATH (default artifacts/model.onnx), ORT_THREADS (default 1),
+      DRIFT_REFERENCE (default artifacts/drift_reference.npz, from scripts/drift_eval.py)
 
 Request:  {"windows": [[[acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z] x 128] x batch]}
           raw sensor values: acc in g, gyro in rad/s, 50 Hz.
 Response: {"model_version": ..., "predictions": [{"label", "class_id", "probabilities"}, ...]}
+
+GET /metrics: predicted-class distribution and input statistics since startup.
+GET /drift:   KS drift check on the most recent 256 windows against the training reference.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -19,7 +24,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 
 from movement.data import CHANNELS, CLASS_NAMES, WINDOW
+from movement.drift import KSDriftDetector
 from movement.export import onnx_logits, session, sha256, softmax
+from movement.monitoring import Monitor
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_BATCH = 256
@@ -64,16 +71,28 @@ def parse_windows(body: bytes) -> np.ndarray:
     return X
 
 
-def create_app(model_path: str | Path | None = None, threads: int | None = None) -> FastAPI:
+def create_app(model_path: str | Path | None = None, threads: int | None = None,
+               drift_reference: str | Path | None = None) -> FastAPI:
     model_path = Path(model_path or os.environ.get("MODEL_PATH", ROOT / "artifacts" / "model.onnx"))
     threads = threads or int(os.environ.get("ORT_THREADS", "1"))
+    ref_path = Path(drift_reference or os.environ.get("DRIFT_REFERENCE", ROOT / "artifacts" / "drift_reference.npz"))
     sess = session(model_path, threads=threads)
     version = sha256(model_path)[:12]
+    detector = KSDriftDetector(np.load(ref_path)["summary"]) if ref_path.exists() else None
+    monitor = Monitor(detector)
+    mon_log = logging.getLogger("movement.monitor")
+    mon_log.setLevel(logging.INFO)
+    if not mon_log.handlers:  # uvicorn configures its own loggers, not ours
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(message)s"))
+        mon_log.addHandler(handler)
     app = FastAPI(title="movement-classifier", version=version)
+    app.state.monitor = monitor
 
     def infer(X: np.ndarray) -> list[dict]:
         probs = softmax(onnx_logits(sess, X))
         ids = probs.argmax(axis=1)
+        monitor.record(X, ids)
         return [
             {"label": CLASS_NAMES[i], "class_id": int(i),
              "probabilities": {c: round(float(p), 6) for c, p in zip(CLASS_NAMES, row)}}
@@ -83,6 +102,14 @@ def create_app(model_path: str | Path | None = None, threads: int | None = None)
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok", "model_version": version}
+
+    @app.get("/metrics")
+    def metrics() -> dict:
+        return {"model_version": version, **monitor.snapshot()}
+
+    @app.get("/drift")
+    def drift() -> dict:
+        return monitor.drift()
 
     @app.post("/predict", openapi_extra=PREDICT_SCHEMA)
     async def predict(request: Request) -> dict:
