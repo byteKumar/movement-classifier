@@ -1,0 +1,16 @@
+single: 64 bodies, 16135 bytes each
+batch32: 16 bodies, 527989 bytes each
+{"status":"ok","model_version":"0fbe56f4d01d"}load avg before latency-single: { 2.66 2.78 2.67 }
+{"mode":"latency","payload":"single","target_rate":null,"duration":"60s","requests":115684,"achieved_rps":1928.0498283648324,"failed_rate":0,"dropped_iterations":0,"latency_ms":{"avg":0.4660067684381438,"min":0.391,"p50":0.449,"p90":0.474,"p95":0.497,"p99":0.714169999999999,"max":62.526}}
+load avg before latency-batch32: { 2.89 2.83 2.69 }
+{"mode":"latency","payload":"batch32","target_rate":null,"duration":"60s","requests":7164,"achieved_rps":119.39155105790347,"failed_rate":0,"dropped_iterations":0,"latency_ms":{"avg":7.451204215522088,"min":6.879,"p50":7.079,"p90":7.472,"p95":7.7886999999999995,"p99":12.603869999999997,"max":74.433}}
+load avg before rate-250: { 2.88 2.82 2.69 }
+{"mode":"rate","payload":"single","target_rate":250,"duration":"60s","requests":15001,"achieved_rps":249.99026769439814,"failed_rate":0,"dropped_iterations":0,"latency_ms":{"avg":2.2782794480367796,"min":0.457,"p50":1.544,"p90":2.322,"p95":2.802,"p99":29.851,"max":140.472}}
+rate 250: pass=1
+load avg before rate-500: { 4.12 3.07 2.79 }
+{"mode":"rate","payload":"single","target_rate":500,"duration":"60s","requests":30000,"achieved_rps":499.9952500451245,"failed_rate":0,"dropped_iterations":0,"latency_ms":{"avg":1.3116447000000029,"min":0.412,"p50":0.954,"p90":1.206,"p95":1.536,"p99":5.966549999999986,"max":137.223}}
+rate 500: pass=1
+load avg before rate-1000: { 2.81 2.91 2.75 }
+{"mode":"rate","payload":"single","target_rate":1000,"duration":"60s","requests":59918,"achieved_rps":998.6154914032203,"failed_rate":0,"dropped_iterations":83,"latency_ms":{"avg":1.829974298207551,"min":0.414,"p50":0.6,"p90":0.65,"p95":0.9652999999999946,"p99":45.67442999999999,"max":177.108}}
+rate 1000: pass=0
+done

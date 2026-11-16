@@ -16,3 +16,4 @@ mlflow.db
 .DS_Store
 *.egg-info/
 bench/payloads/
+bench/results/server.log

@@ -7,7 +7,7 @@ Classifies human movement (walking, walking upstairs, walking downstairs, sittin
 - a 1D-CNN in PyTorch, with experiment tracking in MLflow
 - evaluation over several seeds and leave-subjects-out cross-validation
 - ONNX export, served with FastAPI and ONNX Runtime
-- drift checks on the input signals
+- drift checks on the input signals, service monitoring, and a k6 load test
 
 Data: the UCI "Smartphone-Based Recognition of Human Activities and Postural Transitions" (HAPT) raw recordings, from the same 30-subject experiment as the UCI HAR dataset. The dataset is downloaded by a script and is not stored in this repo.
 
@@ -101,4 +101,84 @@ curl -s -X POST localhost:8000/predict -H 'content-type: application/json' \
 - **Model:** 32,550 parameters, `model.onnx` 151,572 bytes (0.152 MB).
 - **API:** `POST /predict` takes 1–256 windows of shape 128 × 6 and returns a label and class probabilities for each, plus a model version (first 12 hex characters of the ONNX file's SHA-256). Wrong shapes, NaN or infinite values, and non-JSON bodies get a 422 with a message; more than 256 windows get a 413. The body is parsed with `json` + NumPy instead of a nested pydantic model because a batch of 32 is 24,576 numbers. ONNX Runtime runs with 1 thread per call in FastAPI's thread pool, so concurrent requests can use several cores.
 
-Work in progress; results will be added as each milestone lands.
+## Monitoring
+
+- `GET /metrics`: request and window counts since startup, how many windows were predicted as each class (count and share), and running per-channel count / mean / std / min / max of every input sample (Welford's method merged per batch, so no samples are stored).
+- `GET /drift`: the drift check below, run on the most recent 256 windows. It returns `drift: null` with a reason until 256 windows have arrived.
+- A one-line JSON summary goes to the `movement.monitor` log every 10,000 windows.
+
+## Drift check
+
+Each window is summarized by the mean and std of each of its 6 channels (12 numbers). The check compares a batch of 256 recent windows to the 17 training subjects, one feature at a time. It uses summaries rather than raw samples because the 128 samples in a window are strongly correlated, and the Kolmogorov-Smirnov (KS) test assumes independent draws.
+
+Evaluation (`scripts/drift_eval.py`, plan fixed before running): 200 batches of 256 windows from the 9 test subjects, clean and with 6 synthetic shifts (Gaussian noise at 0.1× and 0.5× the channel std, accelerometer gain ×1.1 and ×1.5, the acc_z or gyro_y axis reading 0). A shift counts as detected if the check fires on at least half its batches.
+
+**First version: failed on clean data.** It used KS p-values with alpha 0.01 and a Bonferroni correction over 12 features. It caught all 6 shifts, but it also raised an alarm on **47 of 200 clean test batches** and **200 of 200 clean validation batches**. With a reference of 5,928 windows, the p-value is tiny for any real difference, and different people (phone tilt, gait) are a real difference. It answered "is this the same 17 people?" instead of "is the sensor broken?".
+
+**Fix: calibrate on new people from the training set** (`scripts/drift_calibrated.py`, rule committed in `8f78d6a` before either stage ran).
+
+- **Null distribution:** 200 times, 4 of the 17 training subjects are held out and the other 13 serve as the reference. Each time, 25 batches are drawn from the held-out subjects, giving 5,000 clean batches of new people. For each batch, the KS distance D is computed for each of the 12 features.
+- **Rule:** a batch's per-feature p-value is the share of those null batches with a D at least as large. The batch raises an alarm when the smallest of its 12 p-values is at or below the 1% quantile of the same quantity over the null batches (8.0e-4). Taking the minimum over features handles the 12 correlated features without Bonferroni.
+- **Decision:** made on the 4 validation subjects only, before the test stage could run. Rule: adopt if at most 10 of 200 clean validation batches raise an alarm and at least 4 of 6 shifts are detected.
+
+| batches (200 each) | KS p-value check | calibrated check |
+|---|---|---|
+| clean, validation subjects | 200 alarms | 0 |
+| clean, test subjects | 47 alarms | **0** |
+| each of the 6 shifts, test subjects | 200 | **200** |
+
+On the test batches the original check's 47 of 200 reproduced exactly, so both checks saw the same batches. On its own null, the calibrated check fires on 0.92% of batches. The service uses the calibrated check.
+
+Limit: every shift fires on 100% of batches, even noise at 0.1× the channel std. So this evaluation shows the check separates broken sensors from new people. It does not show the smallest fault it can detect.
+
+## Load test
+
+```bash
+bash bench/run_bench.sh   # needs k6; about 10 min; writes bench/results/
+```
+
+The plan is in the script header and was fixed before the first run:
+
+- **Server:** 1 uvicorn worker on 127.0.0.1, ONNX Runtime on CPU with 1 thread per call. k6 runs on the same machine.
+- **Latency runs:** 60 s with one client sending requests back to back, once with single-window bodies and once with 32-window bodies.
+- **Rate ladder:** single-window requests at a fixed arrival rate, from 250 to 4,000 req/s, 60 s per step. A step passes if p99 < 50 ms with no failed requests and no dropped iterations. The ladder stops at the first failing step.
+
+Apple M3, measured once:
+
+| | p50 | p99 |
+|---|---|---|
+| 1 window | 0.449 ms | 0.714 ms |
+| 32 windows | 7.079 ms | 12.604 ms |
+
+- **Highest passing rate: 500 req/s** (p99 5.970 ms).
+- **1,000 req/s failed.** p99 was 45.67 ms, under 50, but k6 dropped 83 iterations. With k6 on the same machine, some of that may be the load generator rather than the server.
+- **Batch of 32:** costs about 16 times a single window. Most of that is likely parsing a 528 KB JSON body; a binary format would be the next step.
+
+## Results
+
+| | |
+|---|---|
+| macro-F1, test subjects, 5 seeds | baseline 0.9479 ± 0.0000, CNN 0.9324 ± 0.0207 |
+| leave-subjects-out CV macro-F1 | CNN 0.9353 ± 0.0268, baseline 0.9391 ± 0.0295 |
+| hardest pair | sitting vs standing (CNN F1 0.798 / 0.851) |
+| ONNX parity | max abs logit diff 2.384e-06 |
+| model | 32,550 parameters, 0.152 MB |
+| serving | single-window p50/p99 0.449 / 0.714 ms, batch-32 p50/p99 7.079 / 12.604 ms, 500 req/s at p99 < 50 ms |
+| drift | 6 of 6 shifts detected, 0 of 200 false alarms on clean test batches (first version: 47 of 200) |
+
+Full numbers, devices and what was not verified: [RESULTS.md](RESULTS.md).
+
+## Reproduce everything
+
+```bash
+python scripts/train_baseline.py
+python scripts/select_cnn.py --device mps        # augmentation choice, non-test subjects only
+python scripts/evaluate.py --device mps          # 5 seeds + leave-subjects-out CV, saves the served model
+python scripts/export_onnx.py
+python scripts/drift_eval.py                     # first drift check, kept for the record
+python scripts/drift_calibrated.py --stage val   # decides on validation subjects
+python scripts/drift_calibrated.py --stage test
+bash bench/run_bench.sh
+```
+
+CI is not set up to run yet; the tests were run locally (`pytest`).

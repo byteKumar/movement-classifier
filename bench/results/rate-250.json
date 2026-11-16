@@ -1,0 +1,19 @@
+{
+  "mode": "rate",
+  "payload": "single",
+  "target_rate": 250,
+  "duration": "60s",
+  "requests": 15001,
+  "achieved_rps": 249.99026769439814,
+  "failed_rate": 0,
+  "dropped_iterations": 0,
+  "latency_ms": {
+    "avg": 2.2782794480367796,
+    "min": 0.457,
+    "p50": 1.544,
+    "p90": 2.322,
+    "p95": 2.802,
+    "p99": 29.851,
+    "max": 140.472
+  }
+}

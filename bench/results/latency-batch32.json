@@ -1,0 +1,19 @@
+{
+  "mode": "latency",
+  "payload": "batch32",
+  "target_rate": null,
+  "duration": "60s",
+  "requests": 7164,
+  "achieved_rps": 119.39155105790347,
+  "failed_rate": 0,
+  "dropped_iterations": 0,
+  "latency_ms": {
+    "avg": 7.451204215522088,
+    "min": 6.879,
+    "p50": 7.079,
+    "p90": 7.472,
+    "p95": 7.7886999999999995,
+    "p99": 12.603869999999997,
+    "max": 74.433
+  }
+}
