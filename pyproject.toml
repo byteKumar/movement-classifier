@@ -13,3 +13,7 @@ packages = ["movement"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "mps: needs an Apple GPU (MPS); deselected on the Linux CI runner",
+    "trained_model: needs artifacts/ from the training scripts (not in git); deselected on CI",
+]

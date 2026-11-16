@@ -73,6 +73,7 @@ def test_too_large_batch(client):
     assert r.status_code == 413
 
 
+@pytest.mark.trained_model
 @pytest.mark.skipif(not (ROOT / "artifacts" / "model.onnx").exists()
                     or not (ROOT / "data" / "windows.npz").exists(), reason="needs exported model and data")
 def test_real_model_through_the_api_matches_pytorch_on_test_windows():

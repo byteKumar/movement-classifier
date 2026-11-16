@@ -67,6 +67,7 @@ def test_different_seeds_differ():
     assert not torch.equal(a.head[2].weight, b.head[2].weight)
 
 
+@pytest.mark.mps
 @pytest.mark.skipif(not torch.backends.mps.is_available(), reason="no MPS")
 def test_mps_and_cpu_agree_on_forward_pass():
     m = MovementCNN().eval()
