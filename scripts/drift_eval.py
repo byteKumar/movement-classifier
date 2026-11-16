@@ -13,7 +13,9 @@ Plan (fixed before the first run, not tuned afterwards):
   "detected"  : a shift counts as detected if the check fires on >= 50% of its batches
   false alarm : a clean batch on which the check fires
 
-It also saves the reference summaries the service uses for GET /drift.
+Result: 6 of 6 shifts detected, but 47 of 200 clean test batches and 200 of
+200 clean val batches flagged. scripts/drift_calibrated.py is the follow-up
+and now writes the reference file the service uses for GET /drift.
 
 Usage: python scripts/drift_eval.py
 """
@@ -26,7 +28,7 @@ from pathlib import Path
 import numpy as np
 
 from movement.data import CHANNELS, load_cached, split_by_subject
-from movement.drift import ALPHA, BATCH, KSDriftDetector, add_noise, drop_axis, gain, window_summary
+from movement.drift import ALPHA, BATCH, KSDriftDetector, add_noise, drop_axis, gain
 
 ROOT = Path(__file__).resolve().parent.parent
 ART = ROOT / "artifacts"
@@ -42,7 +44,6 @@ def main() -> None:
     train, val, test = split_by_subject(load_cached(ROOT / "data" / "windows.npz"))
     det = KSDriftDetector.from_windows(train.X)
     ART.mkdir(exist_ok=True)
-    np.savez_compressed(ART / "drift_reference.npz", summary=window_summary(train.X))
     ch_std = train.X.reshape(-1, 6).std(axis=0)
 
     rng = np.random.default_rng(0)

@@ -14,7 +14,10 @@ ROOT=$(cd .. && pwd)
 OUT=results
 mkdir -p "$OUT"
 
-busy=$(pgrep -fl '^k6 |bench/run-|node bench|lsm_bench|db_bench|bench_|playwright|lighthouse|scripts/train_|scripts/evaluate' | grep -v "$$" || true)
+# Shell wrappers (sh/bash/zsh -c ...) are skipped: a watcher loop's own command line
+# contains these patterns, and the real work it starts shows up as its own process.
+busy=$(pgrep -fl '^k6 |bench/run-|node bench|lsm_bench|db_bench|bench_|playwright|lighthouse|scripts/train_|scripts/evaluate' \
+  | grep -v -E '^[0-9]+ (/bin/)?(ba|z)?sh( |$)' || true)
 if [ -n "$busy" ]; then echo "another benchmark or training job is running:"; echo "$busy"; exit 1; fi
 if lsof -iTCP:8000 -sTCP:LISTEN -n -P >/dev/null 2>&1; then echo "port 8000 is in use"; exit 1; fi
 

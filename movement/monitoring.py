@@ -18,13 +18,13 @@ from collections import deque
 import numpy as np
 
 from movement.data import CHANNELS, CLASS_NAMES
-from movement.drift import BATCH, KSDriftDetector, window_summary
+from movement.drift import BATCH, CalibratedDriftDetector, KSDriftDetector, window_summary
 
 log = logging.getLogger("movement.monitor")
 
 
 class Monitor:
-    def __init__(self, detector: KSDriftDetector | None = None, recent: int = 2048, log_every: int = 10_000):
+    def __init__(self, detector: KSDriftDetector | CalibratedDriftDetector | None = None, recent: int = 2048, log_every: int = 10_000):
         self.detector = detector
         self.log_every = log_every
         self._lock = threading.Lock()

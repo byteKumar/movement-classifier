@@ -9,7 +9,8 @@ Request:  {"windows": [[[acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z] x 128] x b
 Response: {"model_version": ..., "predictions": [{"label", "class_id", "probabilities"}, ...]}
 
 GET /metrics: predicted-class distribution and input statistics since startup.
-GET /drift:   KS drift check on the most recent 256 windows against the training reference.
+GET /drift:   drift check on the most recent 256 windows against the training reference
+             (calibrated on held-out training subjects when the reference file has a null).
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 
 from movement.data import CHANNELS, CLASS_NAMES, WINDOW
-from movement.drift import KSDriftDetector
+from movement.drift import load_detector
 from movement.export import onnx_logits, session, sha256, softmax
 from movement.monitoring import Monitor
 
@@ -78,7 +79,7 @@ def create_app(model_path: str | Path | None = None, threads: int | None = None,
     ref_path = Path(drift_reference or os.environ.get("DRIFT_REFERENCE", ROOT / "artifacts" / "drift_reference.npz"))
     sess = session(model_path, threads=threads)
     version = sha256(model_path)[:12]
-    detector = KSDriftDetector(np.load(ref_path)["summary"]) if ref_path.exists() else None
+    detector = load_detector(ref_path) if ref_path.exists() else None
     monitor = Monitor(detector)
     mon_log = logging.getLogger("movement.monitor")
     mon_log.setLevel(logging.INFO)
