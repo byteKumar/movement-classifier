@@ -58,6 +58,32 @@ Changing the model because of a test result would be tuning on the test set, so 
 | CNN v1, no augmentation | 0.9155 ± 0.0368 | 0.937, 0.920, 0.964, 0.876, 0.881 |
 | **CNN v2**, random rotation ≤ 30° + ±10% gain | **0.9308 ± 0.0387** | 0.937, 0.965, 0.971, 0.883, 0.899 |
 
-v2 beat v1 on 4 of 5 folds (+0.0154 mean), which meets the rule, so v2 is now the default. Caveat: the idea for v2 came from looking at test errors (subject 10), so its later test score is slightly test-informed. The v1 test result above stays in the record. Results over 5 seeds and cross-validation on the test protocol follow in the evaluation milestone.
+v2 beat v1 on 4 of 5 folds (+0.0154 mean), which meets the rule, so v2 is now the default. Caveat: the idea for v2 came from looking at test errors (subject 10), so its later test score is slightly test-informed. The v1 test result above stays in the record.
+
+## Evaluation
+
+`python scripts/evaluate.py --device mps` (CNN on MPS, baseline on CPU; all runs logged to MLflow experiment `evaluation`).
+
+**Fixed split, test subjects, seeds 0–4** (mean ± sample std over seeds):
+
+| model | macro-F1 | accuracy | per-seed macro-F1 |
+|---|---|---|---|
+| Features + HGB | **0.9479 ± 0.0000** | 0.9479 ± 0.0000 | identical for every seed |
+| 1D-CNN (v2) | 0.9324 ± 0.0207 | 0.9308 ± 0.0205 | 0.9229, 0.9095, 0.9217, 0.9482, 0.9594 |
+
+**Leave-subjects-out CV over all 30 subjects** (5 folds of 6 subjects; mean ± std over the 5 fold means, CNN fold means average 5 seeds): CNN **0.9353 ± 0.0268**, HGB 0.9391 ± 0.0295. Per fold, CNN / HGB: 0.908 / 0.926, 0.938 / 0.949, 0.958 / 0.937, 0.965 / 0.982, 0.908 / 0.902.
+
+On this data the two models are about even. The baseline is ahead on the official test subjects and by 0.004 in CV, which is well inside the fold-to-fold spread. They fail differently:
+
+| per-class F1 (test, mean over seeds) | walking | upstairs | downstairs | sitting | standing | laying |
+|---|---|---|---|---|---|---|
+| HGB | 0.976 | 0.950 | 0.948 | 0.900 | 0.913 | 1.000 |
+| CNN | 0.982 | 0.976 | 0.987 | **0.798** | 0.851 | 0.999 |
+
+The CNN is better on the three walking classes and worse on sitting. **The hardest pair is sitting vs standing for both models**: the CNN labeled 27.4% of sitting windows as standing (696 of 2,540 over 5 seeds) and 7.1% of standing as sitting (197 of 2,780); for HGB it was 12.8% and 5.9%. Augmentation removed most of the static-as-walking errors seen in v1: test subject 10 went from 64.1% accuracy (v1, seed 0) to 80.9% (v2, mean of 5 seeds).
+
+![CNN confusion matrix](docs/confusion_cnn.png)
+
+The served model is the seed-0 CNN (test macro-F1 0.9229), fixed in `scripts/evaluate.py` before the run, not the best seed.
 
 Work in progress; results will be added as each milestone lands.
