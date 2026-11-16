@@ -16,7 +16,7 @@ Full numbers, devices and caveats: [RESULTS.md](RESULTS.md).
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TD
     raw["UCI HAPT raw recordings<br/>acc + gyro, 50 Hz, 30 subjects"] --> win["Windowing<br/>128 samples, 50% overlap"]
     win --> split["Split by subject<br/>train 17 / val 4 / test 9"]
     split --> feat["99 hand-crafted features"]
