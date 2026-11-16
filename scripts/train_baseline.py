@@ -11,39 +11,23 @@ from __future__ import annotations
 
 import argparse
 import json
-import time
 from pathlib import Path
 
 import mlflow
-import numpy as np
-from sklearn.ensemble import HistGradientBoostingClassifier
-from sklearn.metrics import f1_score
 
 from movement import tracking
+from movement.baseline import PARAMS, fit_and_predict
 from movement.data import load_cached, split_by_subject
 from movement.features import extract_features, feature_names
 from movement.metrics import mean_std, score
 
 ROOT = Path(__file__).resolve().parent.parent
-PARAMS = dict(learning_rate=0.1, max_iter=500, max_leaf_nodes=31, l2_regularization=0.0, early_stopping=False)
 
 
 def run(seed: int, F_tr, y_tr, F_va, y_va, F_te, y_te) -> dict:
-    t0 = time.perf_counter()
-    model = HistGradientBoostingClassifier(**PARAMS, random_state=seed).fit(F_tr, y_tr)
-    fit_s = time.perf_counter() - t0
-    val_curve = [f1_score(y_va, p, average="macro") for p in model.staged_predict(F_va)]
-    best_iter = int(np.argmax(val_curve)) + 1  # first round reaching the best val score
-    for i, p in enumerate(model.staged_predict(F_te), start=1):
-        if i == best_iter:
-            test_pred = p
-            break
-    for i, p in enumerate(model.staged_predict(F_va), start=1):
-        if i == best_iter:
-            val_pred = p
-            break
-    return {"seed": seed, "best_iter": best_iter, "fit_seconds": fit_s,
-            "val": score(y_va, val_pred), "test": score(y_te, test_pred)}
+    out = fit_and_predict(F_tr, y_tr, F_va, y_va, [F_te], seed)
+    return {"seed": seed, "best_iter": out["best_iter"], "fit_seconds": out["fit_seconds"],
+            "val": score(y_va, out["val_pred"]), "test": score(y_te, out["preds"][0])}
 
 
 def main() -> None:

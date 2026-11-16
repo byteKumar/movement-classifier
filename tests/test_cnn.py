@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from movement.cnn import MovementCNN, TrainConfig, count_params, predict, train_cnn
+from movement.cnn import MovementCNN, TrainConfig, augment, count_params, predict, random_rotations, train_cnn
 from movement.data import WINDOW, Windows
 
 CPU = torch.device("cpu")
@@ -74,3 +74,30 @@ def test_mps_and_cpu_agree_on_forward_pass():
     cpu_out = m(x)
     mps_out = m.to("mps")(x.to("mps")).cpu()
     assert torch.allclose(cpu_out, mps_out, atol=1e-4)
+
+
+# ---------- augmentation ----------
+
+def test_rotations_are_proper_and_within_angle():
+    R = random_rotations(500, 30, torch.Generator().manual_seed(0))
+    eye = torch.eye(3).expand(500, 3, 3)
+    assert torch.allclose(R @ R.transpose(1, 2), eye, atol=1e-5)
+    assert torch.allclose(torch.linalg.det(R), torch.ones(500), atol=1e-5)
+    angle = torch.rad2deg(torch.arccos(((R.diagonal(dim1=1, dim2=2).sum(1) - 1) / 2).clamp(-1, 1)))
+    assert angle.max() <= 30 + 1e-3 and angle.max() > 25
+
+
+def test_rotation_keeps_vector_lengths_and_applies_same_rotation_to_both_sensors():
+    x = torch.randn(16, WINDOW, 6)
+    x[:, :, 3:] = x[:, :, :3]  # gyro == acc, so a shared rotation keeps them equal
+    out = augment(x, TrainConfig(rotate_deg=30), torch.Generator().manual_seed(0))
+    assert torch.allclose(out[:, :, :3].norm(dim=2), x[:, :, :3].norm(dim=2), atol=1e-5)
+    assert torch.allclose(out[:, :, :3], out[:, :, 3:], atol=1e-6)
+    assert not torch.allclose(out, x)
+
+
+def test_gain_jitter_bounds_and_off_by_default():
+    x = torch.ones(64, WINDOW, 6)
+    out = augment(x, TrainConfig(gain_jitter=0.1), torch.Generator().manual_seed(0))
+    assert out.min() >= 0.9 and out.max() <= 1.1 and out.std() > 0
+    assert torch.equal(augment(x, TrainConfig(), torch.Generator()), x)

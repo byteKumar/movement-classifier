@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from movement.data import CHANNELS, CLASS_NAMES, WINDOW, Windows
+from movement.data import CHANNELS, CLASS_NAMES, Windows
 from movement.metrics import score
 
 
@@ -63,9 +63,42 @@ class TrainConfig:
     batch_size: int = 64
     max_epochs: int = 60
     patience: int = 10  # epochs without val macro-F1 improvement before stopping
+    # Training-time augmentation (0 = off). Applied to each training batch only.
+    rotate_deg: float = 0.0  # max angle of a random 3D rotation of the phone
+    gain_jitter: float = 0.0  # each channel scaled by U(1 - g, 1 + g)
 
     def as_params(self) -> dict:
         return asdict(self)
+
+
+def random_rotations(n: int, max_deg: float, gen: torch.Generator) -> torch.Tensor:
+    """n rotation matrices about random axes by angles uniform in [-max_deg, max_deg]."""
+    axis = torch.randn(n, 3, generator=gen)
+    axis = axis / axis.norm(dim=1, keepdim=True)
+    angle = (torch.rand(n, generator=gen) * 2 - 1) * np.deg2rad(max_deg)
+    x, y, z = axis.unbind(1)
+    zero = torch.zeros_like(x)
+    K = torch.stack([zero, -z, y, z, zero, -x, -y, x, zero], dim=1).view(n, 3, 3)
+    s, c = torch.sin(angle).view(n, 1, 1), torch.cos(angle).view(n, 1, 1)
+    return torch.eye(3).expand(n, 3, 3) + s * K + (1 - c) * (K @ K)  # Rodrigues' formula
+
+
+def augment(xb: torch.Tensor, cfg: TrainConfig, gen: torch.Generator) -> torch.Tensor:
+    """Simulate a phone worn at a different angle / with different sensor gain.
+
+    The accelerometer and gyroscope sit on the same board, so both get the
+    same rotation. Rotation angles are kept small: large ones would erase
+    the gravity direction that tells sitting, standing and lying apart.
+    """
+    if cfg.rotate_deg > 0:
+        R = random_rotations(len(xb), cfg.rotate_deg, gen)  # (B, 3, 3)
+        acc = xb[:, :, 0:3] @ R.transpose(1, 2)
+        gyro = xb[:, :, 3:6] @ R.transpose(1, 2)
+        xb = torch.cat([acc, gyro], dim=2)
+    if cfg.gain_jitter > 0:
+        g = 1 + (torch.rand(len(xb), 1, xb.shape[2], generator=gen) * 2 - 1) * cfg.gain_jitter
+        xb = xb * g
+    return xb
 
 
 def pick_device(name: str = "auto") -> torch.device:
@@ -114,7 +147,8 @@ def train_cnn(train: Windows, val: Windows, cfg: TrainConfig, seed: int, device:
         total = 0.0
         for i in range(0, len(perm), cfg.batch_size):
             idx = perm[i : i + cfg.batch_size]
-            xb, yb = X_tr[idx].to(device), y_tr[idx].to(device)
+            xb = augment(X_tr[idx], cfg, gen)  # done on CPU so the random draws are reproducible
+            xb, yb = xb.to(device), y_tr[idx].to(device)
             opt.zero_grad()
             loss = loss_fn(model(xb), yb)
             loss.backward()

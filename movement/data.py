@@ -131,3 +131,21 @@ def save_windows(w: Windows, path: str | Path) -> None:
 def load_cached(path: str | Path) -> Windows:
     d = np.load(path)
     return Windows(d["X"], d["y"], d["subject"], d["exp"], d["start"])
+
+
+def subject_folds(subjects, k: int, seed: int = 0) -> list[list[int]]:
+    """Shuffle subjects with a fixed seed and deal them into k folds."""
+    order = np.random.default_rng(seed).permutation(sorted(set(int(s) for s in subjects)))
+    return [sorted(order[i::k].tolist()) for i in range(k)]
+
+
+def fold_split(w: Windows, held_out, n_val: int, seed: int) -> tuple[Windows, Windows, Windows]:
+    """Train / early-stopping val / held-out split for one CV fold.
+
+    `n_val` validation subjects are drawn (with `seed`) from the subjects that
+    are not held out, so early stopping never sees the held-out fold.
+    """
+    held_out = set(int(s) for s in held_out)
+    rest = sorted(set(np.unique(w.subject).tolist()) - held_out)
+    val = set(np.random.default_rng(seed).choice(rest, n_val, replace=False).tolist())
+    return split_by_subject(w, test_subjects=held_out, val_subjects=val)

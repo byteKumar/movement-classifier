@@ -157,3 +157,22 @@ def test_val_subjects_match_their_documented_derivation():
     train_pool = sorted(set(range(1, 31)) - set(TEST_SUBJECTS))
     drawn = np.random.default_rng(0).choice(train_pool, 4, replace=False)
     assert tuple(sorted(drawn.tolist())) == VAL_SUBJECTS
+
+
+def test_subject_folds_partition_the_subjects():
+    from movement.data import subject_folds
+    folds = subject_folds(range(1, 22), 5, seed=0)
+    flat = [s for f in folds for s in f]
+    assert sorted(flat) == list(range(1, 22)) and len(set(flat)) == 21
+    assert sorted(len(f) for f in folds) == [4, 4, 4, 4, 5]
+    assert subject_folds(range(1, 22), 5, seed=0) == folds
+
+
+def test_fold_split_keeps_held_out_fold_away_from_train_and_val():
+    from movement.data import fold_split
+    w = _fake(list(range(1, 22)) * 2)
+    tr, va, ho = fold_split(w, held_out=[1, 2, 3, 4], n_val=4, seed=0)
+    assert set(ho.subject) == {1, 2, 3, 4}
+    assert len(set(va.subject)) == 4
+    assert set(tr.subject).isdisjoint(ho.subject) and set(va.subject).isdisjoint(ho.subject)
+    assert set(tr.subject).isdisjoint(va.subject)
