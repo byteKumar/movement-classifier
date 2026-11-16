@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Dataset and generated artifacts (never committed)
+data/
+artifacts/
+mlruns/
+mlflow.db
+*.onnx
+*.pt
+
+# OS
+.DS_Store
